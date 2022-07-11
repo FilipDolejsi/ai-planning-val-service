@@ -9,7 +9,11 @@ var server = http.createServer(function (request, response) {
     });
     request.on('end', function () {
         console.log('Client request ended');
-        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept'
+        });
         response.write(JSON.stringify({ hello: clientName }));
         response.end();
         console.log('Response sent');
