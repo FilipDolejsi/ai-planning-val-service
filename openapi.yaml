@@ -1,0 +1,201 @@
+# https://en.wikipedia.org/wiki/List_of_HTTP_status_codes#2xx_Success
+# http://editor.swagger.io
+
+swagger: "2.0"
+info:
+  description: "AI Planning plan validation and evaluation service"
+  version: "1.0.0"
+  title: "VAL-service"
+# host: "localhost:8085"
+# Enable CORS access to the service which is disabled by default.
+# https://cloud.google.com/endpoints/docs/release-notes
+basePath: "/"
+tags:
+- name: "pddl-parsing"
+  description: "PDDL Parsing"
+schemes:
+- "https"
+paths:
+  /info:
+    get:
+      tags:
+      - "pddl-parsing"
+      summary: "Info"
+      operationId: "get-info"
+      responses:
+        200:
+          description: "OK"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+            
+  /health:
+    get:
+      tags:
+      - "pddl-parsing"
+      summary: "Health"
+      operationId: "get-health"
+      responses:
+        200:
+          description: "OK"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+            
+  /metrics:
+    get:
+      tags:
+      - "pddl-parsing"
+      summary: "Metrics"
+      operationId: "get-metrics"
+      responses:
+        200:
+          description: "OK"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+            
+  /trace:
+    get:
+      tags:
+      - "pddl-parsing"
+      summary: "Trace"
+      operationId: "get-trace"
+      responses:
+        200:
+          description: "OK"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+            
+  /about:
+    get:
+      tags:
+      - "pddl-parsing"
+      summary: "About"
+      operationId: "get-about"
+      responses:
+        200:
+          description: "OK"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+            
+  /parse:
+    post:
+      tags:
+      - "pddl-parsing"
+      summary: "Validate PDDL domain and problem"
+      operationId: "post-parse"
+      consumes:
+      - "application/json"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "ParseInput"
+        schema:
+          $ref: "#/definitions/ParseInput"
+        required: true
+      responses:
+        200:
+          description: "OK"
+          type: array
+          items:
+            $ref: "#/definitions/ParsingMessage"
+        default:
+          description: Error
+          schema: 
+            $ref: "#/definitions/Error"
+
+definitions:
+  Timestamp:
+    description: "timestamp"
+    type: string
+    format: "date-time"
+
+  ParseInput:
+    description: "Parse input"
+    properties:
+      domain:
+        type: string
+      problems:
+        type: array
+        items:
+          type: string
+    required:
+    - domain
+    - problems
+
+  Severity:
+    description: "Severity"
+    type: string
+    enum:
+    - "INFO"
+    - "WARNING"
+    - "ERROR"
+
+  Location:
+    description: "Location"
+    type: string
+    enum:
+    - "DOMAIN"
+    - "GENERAL"
+    - "PROBLEM"
+
+  Position:
+    description: "Parsing error position"
+    properties:
+      line:
+        type: integer
+      column:
+        type: integer
+    required:
+    - line
+    - column
+
+  ParsingMessage:
+    description: "Parsing error"
+    properties:
+      location:
+        $ref: "#/definitions/Location"
+      position:
+        $ref: "#/definitions/Position"
+      severity:
+        $ref: "#/definitions/Severity"
+      issue:
+        type: string
+      message:
+        type: string
+    required:
+    - location
+    - position
+    - severity
+    - issue
+    - message
+
+  Error:
+    properties:
+      status:
+        type: integer
+      error:
+        type: string
+      message:
+        type: string
+      timestamp:
+        $ref: "#/definitions/Timestamp"
+      trace:
+        type: string
+    required:
+      - status
+      - error
+      - message
+      - timestamp
+      - trace
+
