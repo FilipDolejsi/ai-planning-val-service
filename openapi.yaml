@@ -6,7 +6,7 @@ info:
   description: "AI Planning plan validation and evaluation service"
   version: "1.0.0"
   title: "VAL-service"
-# host: "localhost:8085"
+host: "localhost:8085"
 # Enable CORS access to the service which is disabled by default.
 # https://cloud.google.com/endpoints/docs/release-notes
 basePath: "/"

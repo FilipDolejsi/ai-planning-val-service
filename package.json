@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Plan VALidation and eVALuation service",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "test"
   },
@@ -21,6 +22,7 @@
   },
   "homepage": "https://github.com/FilipDolejsi/ai-planning-val-service#readme",
   "dependencies": {
-    "ai-planning-val": "^2.9.1"
+    "ai-planning-val": "^2.9.1",
+    "vscode-uri": "^3.0.3"
   }
 }

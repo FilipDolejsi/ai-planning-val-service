@@ -1,0 +1,3 @@
+{
+    "pddlParser.executableOrService": "http://localhost:8085/parse"
+}
