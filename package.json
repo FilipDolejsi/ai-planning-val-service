@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "test"
+    "postinstall": "downloadVal --destination=./val_binaries/"
   },
   "repository": {
     "type": "git",

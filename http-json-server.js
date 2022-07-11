@@ -3,7 +3,14 @@ import { parser, Happening, HappeningType } from 'pddl-workspace';
 import { ValStep, ValueSeq, Parser } from 'ai-planning-val';
 import vscodeUri from 'vscode-uri'
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 
+var valLocation = path.join("val_binaries", "val.json");
+var valBinariesText = fs.readFileSync(valLocation, { encoding: "utf-8" });
+var parserExe = JSON.parse(valBinariesText).parserPath;
+var parserPath = path.join("val_binaries", parserExe);
+console.log(parserPath);
 var server = http.createServer(function (request, response) {
     var allData = "";
     request.on('data', async function (data) {
@@ -12,13 +19,10 @@ var server = http.createServer(function (request, response) {
     request.on('end', async function () {
         console.log('Client request ended');
         var info = JSON.parse(allData.toString());
-        // console.log('Client sent: %j', info);
-        // clientName = info.name;
         var domainText=info.domain;
         const domain = parser.PddlDomainParser.parseText(domainText, vscodeUri.URI.file('domain'));
         var problemText=info.problems[0];
         const problem = await parser.PddlProblemParser.parseText(problemText, vscodeUri.URI.file('problem'));
-        var parserPath = ".\\val_binaries\\Val-20210203.2-win64\\bin\\Parser.exe"
         const pddlParser = new Parser({ executablePath : parserPath });
         try {
             const parsingProblems = await pddlParser.validate(domain, problem);
