@@ -106,10 +106,11 @@ paths:
         required: true
       responses:
         200:
-          description: "OK"
-          type: array
-          items:
-            $ref: "#/definitions/ParsingMessage"
+          description: "OK"          
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/ParsingMessage"
         default:
           description: Error
           schema: 
@@ -126,10 +127,51 @@ definitions:
     properties:
       domain:
         type: string
+        description: "PDDL Domain"
+        example: "(define (domain hello)
+          (:requirements :strips :typing :negative-preconditions)
+
+          (:types thing)
+
+          (:predicates
+              (can_hear ?t - thing)
+              (said_hello_to ?t - thing)
+          )
+
+          (:action say-hello
+              :parameters (?t - thing)
+              :precondition (and
+                  (not (said_hello_to ?t))
+                  (can_hear ?t)
+              )
+              :effect (and
+                  (said_hello_to ?t)
+              )
+          )
+          )"
       problems:
         type: array
         items:
           type: string
+          description: "PDDL Problem"
+          example: "(define (problem hello-world)
+
+            (:domain hello)
+
+            (:objects
+                world - thing
+            )
+
+            (:init
+                (can_hear world)
+            )
+
+            (:goal
+                (and
+                    (said_hello_to world)
+                )
+            )
+            )"
     required:
     - domain
     - problems
@@ -141,6 +183,7 @@ definitions:
     - "INFO"
     - "WARNING"
     - "ERROR"
+    example: "WARNING"
 
   Location:
     description: "Location"
@@ -172,8 +215,10 @@ definitions:
         $ref: "#/definitions/Severity"
       issue:
         type: string
+        example: "Undeclared requirement :negative-preconditions"
       message:
         type: string
+        example: "Declare :negative-preconditions"
     required:
     - location
     - position
