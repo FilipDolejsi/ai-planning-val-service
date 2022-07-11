@@ -8,7 +8,7 @@ var server = http.createServer(function (request, response) {
         clientName = info.name;
     });
     request.on('end', function () {
-        console.log('Client rquest ended');
+        console.log('Client request ended');
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.write(JSON.stringify({ hello: clientName }));
         response.end();
