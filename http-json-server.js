@@ -15,4 +15,10 @@ var server = http.createServer(function (request, response) {
         console.log('Response sent');
     });
 });
+
+console.log('Service is listening at :8085');
 server.listen(8085, 'localhost');
+
+server.on('connection', (stream) => {
+    console.log('someone connected!');
+});
