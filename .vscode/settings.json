@@ -1,3 +1,5 @@
 {
-    "pddlParser.executableOrService": "http://localhost:8085/parse"
+    "pddlParser.executableOrService": "http://localhost:8081/parse",
+    "pddl.validatorPath": "http://localhost:8081/evaluation",
+    "WhiteSource Advise.Diff.BaseBranch": "master"
 }
