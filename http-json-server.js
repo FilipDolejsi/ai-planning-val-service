@@ -1,6 +1,6 @@
 // @ts-check
-import { parser, Happening, HappeningType } from 'pddl-workspace';
-import { ValStep, ValueSeq, Parser } from 'ai-planning-val';
+import { parser, Happening, HappeningType, Plan, VariableValue } from 'pddl-workspace';
+import { ValStep, ValueSeq, Parser, PlanEvaluator, PlanFunctionEvaluator, GroundedFunctionValues } from 'ai-planning-val';
 import vscodeUri from 'vscode-uri'
 import http from 'http';
 import fs from 'fs';
@@ -15,6 +15,9 @@ var parserPath = path.join("val_binaries", parserExe);
 
 var valStepExe = JSON.parse(valBinariesText).valStepPath;
 var valStepDir = path.join("val_binaries", valStepExe);
+
+var valueSeqExe = JSON.parse(valBinariesText).valueSeqPath;
+var valueSeqPath = path.join("val_binaries", valueSeqExe);
 console.log(parserPath);
 
 app.post('/parse', function (request, response) {
@@ -25,17 +28,17 @@ app.post('/parse', function (request, response) {
     request.on('end', async function () {
         console.log('Client request ended');
         var info = JSON.parse(allData.toString());
-        var domainText=info.domain;
+        var domainText = info.domain;
         const domain = parser.PddlDomainParser.parseText(domainText, vscodeUri.URI.file('domain'));
-        var problemText=info.problems[0];
+        var problemText = info.problems[0];
         const problem = await parser.PddlProblemParser.parseText(problemText, vscodeUri.URI.file('problem'));
-        const pddlParser = new Parser({ executablePath : parserPath });
+        const pddlParser = new Parser({ executablePath: parserPath });
         try {
             const parsingProblems = await pddlParser.validate(domain, problem);
             var allProblems = [];
             parsingProblems.forEach((issues, fileUri) => {
                 console.log(`Parsing problems in ${fileUri}`);
-                issues.forEach(issue => console.log(`At line: ${issue.range.start.line} ${issue.severity}: ${issue.problem}`))  
+                issues.forEach(issue => console.log(`At line: ${issue.range.start.line} ${issue.severity}: ${issue.problem}`))
                 issues.forEach(issue => allProblems.push(toProblem(issue, fileUri)));
             });
             response.writeHead(200, {
@@ -43,9 +46,7 @@ app.post('/parse', function (request, response) {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept'
             });
-            response.write(JSON.stringify(
-                allProblems
-              ));
+            response.json(allProblems);
         } catch (error) {
             console.error(error);
             response.writeHead(500, {
@@ -61,13 +62,25 @@ app.post('/parse', function (request, response) {
                     "timestamp": "2022-07-11T18:32:19.342Z",
                     "trace": "string"
                 }
-              ]));
+            ]));
         }
         response.end();
         console.log('Response sent');
     });
 });
 
+
+const PLAN_HAPPENINGS_EFFECT_EVALUATION = 'plan-happenings-effect-evaluation';
+const FINAL_STATE_VALUES = 'final-state-evaluation';
+const NUMERIC_FUNCTION_VALUES = 'plan-function-evaluation';
+const ALL_EVALUATIONS = [
+    PLAN_HAPPENINGS_EFFECT_EVALUATION,
+    FINAL_STATE_VALUES,
+    NUMERIC_FUNCTION_VALUES
+];
+const HEADER_NAME = 'evaluations';
+
+console.log(`Available evaluations: ${HEADER_NAME}: ${ALL_EVALUATIONS.join(',')}`);
 
 app.post('/evaluation', async function (request, response) {
     console.log("Got a POST request for the homepage");
@@ -86,49 +99,97 @@ app.post('/evaluation', async function (request, response) {
         const plan = new parser.PddlPlanParser().parseText(planText, 0.001);
         const allHappenings = plan.getHappenings();
 
-        const valStep = new ValStep(domain, problem);
-        try {
-    
-            var valuesAtEnd = await valStep.executeBatch(allHappenings, {
-                valStepPath: valStepDir,
-                verbose: false
+        const all = {};
+
+        const requestedEvaluations = request.headers[HEADER_NAME] ?? ALL_EVALUATIONS.join(',');
+
+        if (requestedEvaluations.includes(PLAN_HAPPENINGS_EFFECT_EVALUATION)) {
+            const valStep = new ValStep(domain, problem);
+            try {
+
+                /** @type HappeningsValues[] */
+                const happeningsValues = [];
+
+                valStep.onStateUpdated((happenings, values) => {
+                    happeningsValues.push(new HappeningsValues(happenings, values));
+                });
+
+                var valuesAtEnd = await valStep.executeIncrementally(allHappenings, {
+                    valStepPath: valStepDir,
+                    verbose: false
+                })
+
+                all[PLAN_HAPPENINGS_EFFECT_EVALUATION] = happeningsValues;
+                // check for undefined; return some failure state
+
+                console.log(`Values at end: ` +
+                    valuesAtEnd
+                        .map(v => `${v.getVariableName()}=${v.getValue()}`)
+                        .join(', '));
+
+
+            } catch (error) {
+                console.error(error);
+                response.send(error.message);
+            }
+        }
+        if (requestedEvaluations.includes(FINAL_STATE_VALUES)) {
+            const planEvaluator = new PlanEvaluator();
+            const finalState = await planEvaluator.evaluate(domain, problem, plan, { valStepPath: valStepDir });
+            console.log(JSON.stringify(finalState, null, 2));
+            all[FINAL_STATE_VALUES] = finalState;
+        }
+        if (requestedEvaluations.includes(NUMERIC_FUNCTION_VALUES)) {
+            const planObj = new Plan(plan.getSteps(), domain, problem);
+            const planEvaluator = new PlanFunctionEvaluator(planObj, {
+                valueSeqPath: valueSeqPath, valStepPath: valStepDir, shouldGroupByLifted: true
+            });
+
+            const functionValues = await planEvaluator.evaluate();
+
+            var allVariableValues = {};
+            // print out the data for each graph
+            functionValues.forEach((variableValues, variable) => {
+                allVariableValues[variable.getFullName()] = toVariableValuesResponse(variableValues);
             })
 
-            // check for undefined; return some failure state
-
-            console.log(`Values at end: ` +
-                valuesAtEnd
-                    .map(v => `${v.getVariableName()}=${v.getValue()}`)
-                    .join(', '));
-        
-            response.send(`Values at end: ` +
-            valuesAtEnd
-                .map(v => `${v.getVariableName()}=${v.getValue()}`)
-                .join(', '));
-        
-        } catch (error) {
-            console.error(error);
-            response.send(error.message);
+            all[NUMERIC_FUNCTION_VALUES] = allVariableValues;
+            console.log(allVariableValues);
         }
-    
+
+        response.json(all);
+        response.end();
     })
 })
 
- var server = app.listen(8081, function () {
+/**
+ * Converts to response.
+ * @param {GroundedFunctionValues} variableValues 
+ * @returns response structure
+ */
+function toVariableValuesResponse(variableValues) {
+    return {
+        "variable": variableValues.liftedVariable.getFullName(),
+        "values": JSON.stringify(variableValues.values),
+        "legend": variableValues.legend
+    };
+}
+
+var server = app.listen(8081, function () {
     var host = server.address().address
     var port = server.address().port
-    
+
     console.log("Example app listening at http://%s:%s", host, port)
- })
+})
 
 function toProblem(issue, fileUri) {
     var fileType;
-    if (fileUri.includes('domain')){
+    if (fileUri.includes('domain')) {
         fileType = "DOMAIN";
-    } else if (fileUri.includes('problem')){
+    } else if (fileUri.includes('problem')) {
         fileType = "PROBLEM:0";//todo:generalise the 0
     }
-    var line = issue.range.start.line+1;
+    var line = issue.range.start.line + 1;
     var character = issue.range.start.character;
     var problem = issue.problem;
     var severity = issue.severity;
@@ -142,4 +203,23 @@ function toProblem(issue, fileUri) {
         "issue": problem,
         "message": problem
     };
+}
+
+
+class HappeningsValues {
+
+    /** @type Happening[]*/
+    happenings;
+    /** @type VariableValue[]*/
+    values;
+
+    /**
+     * Constructs
+     * @param {Happening[]} happenings 
+     * @param {VariableValue[]} values 
+     */
+    constructor(happenings, values) {
+        this.happenings = happenings;
+        this.values = values;
+    }
 }
