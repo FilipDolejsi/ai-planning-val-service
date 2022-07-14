@@ -1,23 +1,21 @@
 // @ts-check
-import { parser, Happening, HappeningType, Plan, VariableValue } from 'pddl-workspace';
-import { ValStep, ValueSeq, Parser, PlanEvaluator, PlanFunctionEvaluator, GroundedFunctionValues } from 'ai-planning-val';
+import { parser, Happening, Plan, VariableValue, ParsingProblem, PddlRange } from 'pddl-workspace';
+import { ValStep, Parser, PlanEvaluator, PlanFunctionEvaluator, GroundedFunctionValues } from 'ai-planning-val';
 import vscodeUri from 'vscode-uri'
-import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
 
 var app = express();
-var valLocation = path.join("val_binaries", "val.json");
+const valBinariesDir = "val_binaries";
+var valLocation = path.join(valBinariesDir, "val.json");
 var valBinariesText = fs.readFileSync(valLocation, { encoding: "utf-8" });
-var parserExe = JSON.parse(valBinariesText).parserPath;
-var parserPath = path.join("val_binaries", parserExe);
+const valBinaries = JSON.parse(valBinariesText);
 
-var valStepExe = JSON.parse(valBinariesText).valStepPath;
-var valStepDir = path.join("val_binaries", valStepExe);
+var parserPath = path.join(valBinariesDir, valBinaries.parserPath);
+var valStepDir = path.join(valBinariesDir, valBinaries.valStepPath);
+var valueSeqPath = path.join(valBinariesDir, valBinaries.valueSeqPath);
 
-var valueSeqExe = JSON.parse(valBinariesText).valueSeqPath;
-var valueSeqPath = path.join("val_binaries", valueSeqExe);
 console.log(parserPath);
 
 app.post('/parse', function (request, response) {
@@ -70,10 +68,12 @@ app.post('/parse', function (request, response) {
 });
 
 
+const VALIDATION = 'validation';
 const PLAN_HAPPENINGS_EFFECT_EVALUATION = 'plan-happenings-effect-evaluation';
 const FINAL_STATE_VALUES = 'final-state-evaluation';
 const NUMERIC_FUNCTION_VALUES = 'plan-function-evaluation';
 const ALL_EVALUATIONS = [
+    VALIDATION,
     PLAN_HAPPENINGS_EFFECT_EVALUATION,
     FINAL_STATE_VALUES,
     NUMERIC_FUNCTION_VALUES
@@ -83,7 +83,9 @@ const HEADER_NAME = 'evaluations';
 console.log(`Available evaluations: ${HEADER_NAME}: ${ALL_EVALUATIONS.join(',')}`);
 
 app.post('/evaluation', async function (request, response) {
-    console.log("Got a POST request for the homepage");
+    const requestedEvaluations = request.headers[HEADER_NAME] ?? ALL_EVALUATIONS.join(',');
+    console.log(`/evaluation with headers: ${requestedEvaluations}`);
+
     var allData = "";
     request.on('data', async function (data) {
         allData += data;
@@ -99,9 +101,19 @@ app.post('/evaluation', async function (request, response) {
         const plan = new parser.PddlPlanParser().parseText(planText, 0.001);
         const allHappenings = plan.getHappenings();
 
-        const all = {};
+        const responseBody = {};
 
-        const requestedEvaluations = request.headers[HEADER_NAME] ?? ALL_EVALUATIONS.join(',');
+        if (requestedEvaluations.includes(VALIDATION)) {
+            /** @type {ParsingProblem[]} */
+            const mockValidationProblems = [
+                new ParsingProblem("Some validation error", "error", PddlRange.createFullLineRange(4))
+            ];
+
+            responseBody[VALIDATION] = {
+                error: "Plan validation not yet supported.", // optional field
+                problems: mockValidationProblems.map(p => toProblem(p, undefined))
+            };
+        }
 
         if (requestedEvaluations.includes(PLAN_HAPPENINGS_EFFECT_EVALUATION)) {
             const valStep = new ValStep(domain, problem);
@@ -119,7 +131,7 @@ app.post('/evaluation', async function (request, response) {
                     verbose: false
                 })
 
-                all[PLAN_HAPPENINGS_EFFECT_EVALUATION] = happeningsValues;
+                responseBody[PLAN_HAPPENINGS_EFFECT_EVALUATION] = happeningsValues;
                 // check for undefined; return some failure state
 
                 console.log(`Values at end: ` +
@@ -137,7 +149,7 @@ app.post('/evaluation', async function (request, response) {
             const planEvaluator = new PlanEvaluator();
             const finalState = await planEvaluator.evaluate(domain, problem, plan, { valStepPath: valStepDir });
             console.log(JSON.stringify(finalState, null, 2));
-            all[FINAL_STATE_VALUES] = finalState;
+            responseBody[FINAL_STATE_VALUES] = finalState;
         }
         if (requestedEvaluations.includes(NUMERIC_FUNCTION_VALUES)) {
             const planObj = new Plan(plan.getSteps(), domain, problem);
@@ -153,12 +165,12 @@ app.post('/evaluation', async function (request, response) {
                 allVariableValues[variable.getFullName()] = toVariableValuesResponse(variableValues);
             })
 
-            all[NUMERIC_FUNCTION_VALUES] = allVariableValues;
+            responseBody[NUMERIC_FUNCTION_VALUES] = allVariableValues;
             console.log(allVariableValues);
         }
 
-        response.json(all);
-        response.end();
+        console.log(responseBody)
+        response.json(responseBody);
     })
 })
 
@@ -182,12 +194,16 @@ var server = app.listen(8081, function () {
     console.log("Example app listening at http://%s:%s", host, port)
 })
 
+/**
+ * @param {ParsingProblem} issue
+ * @param {string?} fileUri
+ */
 function toProblem(issue, fileUri) {
     var fileType;
-    if (fileUri.includes('domain')) {
+    if (fileUri?.includes('domain')) {
         fileType = "DOMAIN";
-    } else if (fileUri.includes('problem')) {
-        fileType = "PROBLEM:0";//todo:generalise the 0
+    } else if (fileUri?.includes('problem')) {
+        fileType = "PROBLEM:0";//todo: generalize the '0'
     }
     var line = issue.range.start.line + 1;
     var character = issue.range.start.character;
