@@ -1,6 +1,6 @@
 // @ts-check
 import { parser, Happening, Plan, VariableValue, ParsingProblem, PddlRange } from 'pddl-workspace';
-import { ValStep, Parser, PlanEvaluator, PlanFunctionEvaluator, GroundedFunctionValues } from 'ai-planning-val';
+import { ValStep, Parser, PlanEvaluator, PlanFunctionEvaluator, GroundedFunctionValues, PlanValidator } from 'ai-planning-val';
 import vscodeUri from 'vscode-uri'
 import fs from 'fs';
 import path from 'path';
@@ -15,6 +15,7 @@ const valBinaries = JSON.parse(valBinariesText);
 var parserPath = path.join(valBinariesDir, valBinaries.parserPath);
 var valStepDir = path.join(valBinariesDir, valBinaries.valStepPath);
 var valueSeqPath = path.join(valBinariesDir, valBinaries.valueSeqPath);
+var validateExPath = path.join(valBinariesDir, valBinaries.validatePath);
 
 console.log(parserPath);
 
@@ -28,9 +29,9 @@ app.post('/parse', function (request, response) {
         var info = JSON.parse(allData.toString());
         var domainText = info.domain;
         const domain = parser.PddlDomainParser.parseText(domainText, vscodeUri.URI.file('domain'));
+        const pddlParser = new Parser({ executablePath: parserPath });
         var problemText = info.problems[0];
         const problem = await parser.PddlProblemParser.parseText(problemText, vscodeUri.URI.file('problem'));
-        const pddlParser = new Parser({ executablePath: parserPath });
         try {
             const parsingProblems = await pddlParser.validate(domain, problem);
             var allProblems = [];
@@ -39,18 +40,13 @@ app.post('/parse', function (request, response) {
                 issues.forEach(issue => console.log(`At line: ${issue.range.start.line} ${issue.severity}: ${issue.problem}`))
                 issues.forEach(issue => allProblems.push(toProblem(issue, fileUri)));
             });
-            response.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept'
-            });
             response.json(allProblems);
         } catch (error) {
             console.error(error);
             response.writeHead(500, {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept'
+                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept',
             });
             response.write(JSON.stringify([
                 {
@@ -102,16 +98,15 @@ app.post('/evaluation', async function (request, response) {
         const allHappenings = plan.getHappenings();
 
         const responseBody = {};
-
+        
         if (requestedEvaluations.includes(VALIDATION)) {
+            const validator = new PlanValidator(printToConsole);
+            const validationProblems = await validator.validate(domain, problem, plan, { cwd: '.', validatePath: validateExPath, epsilon: 1e-3 });
             /** @type {ParsingProblem[]} */
-            const mockValidationProblems = [
-                new ParsingProblem("Some validation error", "error", PddlRange.createFullLineRange(4))
-            ];
 
             responseBody[VALIDATION] = {
-                error: "Plan validation not yet supported.", // optional field
-                problems: mockValidationProblems.map(p => toProblem(p, undefined))
+                error: validationProblems.getError(), // optional field
+                problems: validationProblems.getPlanProblems().map(p => toProblem(p, undefined))
             };
         }
 
@@ -238,4 +233,8 @@ class HappeningsValues {
         this.happenings = happenings;
         this.values = values;
     }
+}
+
+function printToConsole(text) {
+    console.log(text);
 }
